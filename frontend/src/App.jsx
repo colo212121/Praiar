@@ -7,6 +7,7 @@ import Contactanos from "./Pages/Contactanos";
 import Login from "./Pages/Login";
 import Registrar from "./Pages/Registrar";
 import Perfil from "./Pages/Perfil";
+import Beneficios from "./Pages/Beneficios";
 import TusBalnearios from "./Pages/TusBalnearios";
 import TusReservas from "./Pages/TusReservas";
 import VistaBalneario from "./Pages/VistaBalneario";
@@ -33,6 +34,7 @@ function App() {
             <Route path="/nosotros" element={<Contactanos />} /> 
             <Route path="/login" element={<Login />} /> 
             <Route path="/registrar" element={<Registrar />} /> 
+            <Route path="/beneficios" element={<Beneficios/>}/>
             <Route path="/ciudades/:idCiudad/balnearios" element={<BalneariosPorCiudad />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/informacion-extra" element={<InformacionExtra />} />

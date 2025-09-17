@@ -72,7 +72,7 @@ function Ciudades() {
                     </p>
                   </div>
                   <Link to={`/ciudades/${ciudad.id_ciudad}/balnearios`}>
-                    <button className="mirar-btn">Mirar<br />catálogo</button>
+                    <button className="mirar-btn">Mirar<br />Balnearios</button>
                   </Link>
                 </div>
               </div>

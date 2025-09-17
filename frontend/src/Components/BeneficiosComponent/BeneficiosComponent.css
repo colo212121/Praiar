@@ -1,0 +1,65 @@
+/* src/Components/BeneficiosComponent/BeneficiosComponent.css */
+
+.beneficios-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+  padding: 2.6rem;
+  background-color: #f8f9fa;
+  font-family: 'El Messiri', sans-serif;
+}
+
+.beneficios-content {
+  max-width: 600px;
+  width: 100%;
+}
+
+.beneficios-title {
+  font-size: 2.6rem;
+  font-weight: bold;
+  color: var(--primary-800, #333);
+  margin-bottom: 1.5rem;
+  font-family: 'El Messiri', sans-serif;
+}
+
+.beneficios-message {
+  font-size: 1.2rem;
+  color: var(--text-secondary, #666);
+  line-height: 1.6;
+  margin: 0;
+  font-family: 'El Messiri', sans-serif;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .beneficios-container {
+    padding: 1.5rem;
+    min-height: 50vh;
+  }
+  
+  .beneficios-title {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+  }
+  
+  .beneficios-message {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .beneficios-container {
+    padding: 1rem;
+  }
+  
+  .beneficios-title {
+    font-size: 1.8rem;
+  }
+  
+  .beneficios-message {
+    font-size: 0.9rem;
+  }
+}
