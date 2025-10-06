@@ -12,17 +12,17 @@
   "author": "Praiar",
   "license": "ISC",
   "dependencies": {
-    "@llamaindex/ollama": "^0.1.5",
+    "@llamaindex/ollama": "^0.1.23",
     "@supabase/supabase-js": "^2.50.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
+    "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "llamaindex": "^0.10.6",
-    "mercadopago": "^2.8.0",
-    "morgan": "^1.10.0",
-    "multer": "^2.0.1",
-    "nodemailer": "^7.0.3",
+    "mercadopago": "^2.9.0",
+    "morgan": "^1.10.1",
+    "multer": "^2.0.2",
+    "nodemailer": "^7.0.7",
     "nodemon": "^3.1.10",
     "zod": "^3.25.76"
   }

@@ -16,12 +16,17 @@ function getSesionContext() {
   }
 }
 
+let chatId = null;
+
 export async function enviarMensajeAlBackend(mensaje) {
   const session = getSesionContext();
+  if (!chatId) {
+    chatId = Math.random().toString(36).slice(2);
+  }
   const res = await fetch('http://localhost:3000/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: mensaje, session }),
+    body: JSON.stringify({ message: mensaje, session, chatId }),
   });
   if (!res.ok) {
     const error = await res.json();

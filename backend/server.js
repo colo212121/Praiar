@@ -46,8 +46,10 @@ if (!process.env.BREVO_API_KEY) {
   console.log('[EMAIL] Usando Brevo API (no se verifica SMTP)');
 }
 
+const chatMemory = new Map();
+
 app.post('/api/chat', async (req, res) => {
-  const { message, session } = req.body;
+  const { message, session, chatId } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'No message provided' });
   }
@@ -57,10 +59,34 @@ app.post('/api/chat', async (req, res) => {
     const sessionContextLine = session
       ? `\n[Contexto de sesión]\n- isLoggedIn: ${!!session.isLoggedIn}\n- esPropietario: ${!!session.esPropietario}\n- auth_id: ${session.auth_id || 'N/A'}\n- nombre: ${session.nombre || 'N/A'}\n- email: ${session.email || 'N/A'}\n`
       : `\n[Contexto de sesión]\n- isLoggedIn: false\n`;
-    const finalMessage = `${sessionContextLine}\n${message}`;
+    const history = chatId ? (chatMemory.get(chatId) || []) : [];
+    // Detectar intents de reseteo
+    const lower = (message || '').toLowerCase();
+    let resetMarker = '';
+    if (chatId && /(reset|reiniciar|empezar de cero)/i.test(lower)) {
+      chatMemory.set(chatId, []);
+      resetMarker = '\n[Reset total]';
+    } else if (/(cambiar|otra)\s+ciudad/i.test(lower)) {
+      resetMarker = '\n[Reset ciudad]';
+    } else if (/(cambiar|otra)\s+fecha|me equivoqué de fecha|equivocado de fecha/i.test(lower)) {
+      resetMarker = '\n[Reset fechas]';
+    }
+    const historyPrefix = history.length ? `\n[Historial breve]\n${history.join('\n')}` : '';
+    const finalMessage = `${sessionContextLine}${historyPrefix}${resetMarker}\n${message}`;
 
     const respuesta = await elAgente.run(finalMessage);
-    res.json({ response: respuesta });
+    // Normalizar a texto plano y ocultar bloques <think>
+    let text = typeof respuesta === 'string' ? respuesta : (respuesta?.data?.result || '');
+    if (typeof text !== 'string') text = String(text || '');
+    const cleanText = text.replace(/<think>[\s\S]*?<\/think>/i, '').trim();
+
+    // Guardar último turno (limitado) para contexto minimalista
+    if (chatId) {
+      const next = [...history, `U: ${message}`, `A: ${cleanText}`];
+      // Mantener solo los últimos 6 mensajes (3 turnos)
+      chatMemory.set(chatId, next.slice(-6));
+    }
+    res.json({ response: cleanText });
   } catch (error) {
     console.error('Error en el agente:', error);
     res.status(500).json({ error: 'Error procesando la respuesta del agente' });

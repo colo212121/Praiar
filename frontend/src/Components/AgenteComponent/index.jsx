@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Chat from './chat';
 import { enviarMensajeAlBackend, getSesionContext } from './api';
 import './AgenteComponent.css';
@@ -9,6 +10,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const session = getSesionContext();
+  const navigate = useNavigate();
 
   const rol = !session?.isLoggedIn ? 'invitado' : (session?.esPropietario ? 'dueno' : 'cliente');
 
@@ -30,6 +32,12 @@ export default function App() {
     ]
   };
 
+  const accionesRapidas = [
+    'Cambiar ciudad',
+    'Cambiar fechas',
+    'Reiniciar'
+  ];
+
   const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -43,6 +51,19 @@ export default function App() {
       const respuesta = await enviarMensajeAlBackend(mensajeParaEnviar);
       const textoPlano = typeof respuesta === 'string' ? respuesta : JSON.stringify(respuesta);
       setMensajes(ms => [...ms, { rol: 'asistente', texto: textoPlano }]);
+
+      // Auto-navegar si hay exactamente una ruta interna en la respuesta
+      try {
+        const routeMatches = (textoPlano.match(/\/[\w\-\/.?#=&%]+/g) || []).filter(r => !/^https?:\/\//i.test(r));
+        const uniqueRoutes = Array.from(new Set(routeMatches));
+        if (uniqueRoutes.length === 1) {
+          const route = uniqueRoutes[0];
+          if (route.startsWith('/')) {
+            // Usar navigate para rutas internas
+            navigate(route);
+          }
+        }
+      } catch {}
     } catch (err) {
       setError(err.message);
     } finally {
@@ -61,6 +82,21 @@ export default function App() {
               type="button"
               className="chip"
               onClick={() => setInput(txt)}
+              disabled={loading}
+            >
+              {txt}
+            </button>
+          ))}
+          {accionesRapidas.map((txt, i) => (
+            <button
+              key={`a-${i}`}
+              type="button"
+              className="chip sec"
+              onClick={() => {
+                if (txt === 'Cambiar ciudad') setInput('Cambiar ciudad');
+                else if (txt === 'Cambiar fechas') setInput('Me equivoqué de fecha');
+                else setInput('Reiniciar');
+              }}
               disabled={loading}
             >
               {txt}

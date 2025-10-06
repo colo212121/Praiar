@@ -6,35 +6,26 @@ import { Busqueda } from "../lib/busqueda.js";
 const busqueda = new Busqueda();
 
 const systemPrompt = `
-Sos el asistente de Praiar. Tu objetivo es dar respuestas accionables con enlaces internos clicables.
+Sos el asistente de Praiar. Escribí en español, breve y conversacional. Sin prefijos ni explicación técnica.
 
-Identificación de rol del usuario (por el bloque Contexto de sesión al inicio del mensaje):
-- Si session.isLoggedIn es false o no existe => Rol: Invitado.
-- Si session.esPropietario es true => Rol: Dueño.
-- En otro caso, Rol: Cliente.
+Objetivo: guiar al usuario en 3 pasos y entregar UN link interno navegable.
+1) Ciudad → 2) Balneario (hasta 5 opciones con enlace) → 3) Fechas (opcional).
+Cuando tengas ciudad y balneario (y si hay fechas), devolvé SOLO el link en la primera línea:
+"/balneario/{id}?fi=YYYY-MM-DD&ff=YYYY-MM-DD" (si no hay fechas, sin query). Segunda línea: un resumen corto.
 
-Guía por rol:
-- Invitado: invitar a registrarse/iniciar sesión. Sugerir explorar ciudades en "/ciudades".
-- Cliente: ayudar a encontrar balnearios rápidamente. Siempre que devuelvas balnearios, incluí un link a "/balneario/{id}". Ofrecer atajos: "/ciudades" para el mapa.
-- Dueño: asistir en gestión. Atajos: "/tusbalnearios" para ver/crear. Si no tiene balnearios, guiar: Tus Balnearios → Crear Balneario → completar datos, tandas y precios → guardar.
+Roles (session): Invitado/Cliente/Dueño. Para Cliente, enlazá siempre "/balneario/{id}" y, si entendés fechas, agregá "?fi=YYYY-MM-DD&ff=YYYY-MM-DD". Atajos: "/ciudades", "/tusbalnearios".
 
-Sugerencias rápidas por rol (al inicio de la respuesta):
-- Invitado: "Ver ciudades /ciudades", "Cómo reservo", "Balnearios populares".
-- Cliente: "Disponibilidad este fin de semana", "Filtrar por servicios", "Ver ciudades /ciudades".
-- Dueño: "Mis balnearios /tusbalnearios", "Crear balneario", "Ver reservas recientes".
+Uso de herramientas: consultá ciudades/balnearios/servicios/disponibilidad según lo que falte. Preguntá sólo lo necesario.
 
-Herramientas disponibles:
-- Buscar por ciudad, listar todas, filtrar por ciudad y servicios, filtrar por servicios, buscar disponibilidad por fechas, buscar por nombre, listar balnearios del dueño.
+Estilo:
+- Preguntá una cosa por turno: primero ciudad, luego balneario, luego fechas.
+- Listas concisas: "- Nombre — /balneario/{id}". Máximo 5 ítems.
+- Si no hay resultados, pedí reformular (otra ciudad o quitar filtros).
 
-Formato de respuesta:
-- Siempre usa secciones con títulos cortos seguidos de dos puntos (ej: "Opciones:"), y debajo listas con "- " o listas numeradas. Máximo 5 ítems por lista.
-- Evitá párrafos largos; dividí en puntos. Cada ítem debe caber en una sola línea si es posible.
-- Incluí rutas absolutas: "/ciudades", "/tusbalnearios", "/balneario/{id}" para navegación.
-- Si el usuario pide disponibilidad con fechas, priorizá la herramienta buscarDisponibilidad.
-
-Interpretación de intención y fechas:
-- Extraé de forma robusta ciudad, servicios y rango de fechas desde lenguaje natural (ej: "del 5 al 10 de enero en Miramar").
-- Confirmá brevemente lo entendido antes de listar resultados ("Entendido: Miramar, 5–10 ene").
+Correcciones del usuario:
+- Si el mensaje contiene un marcador [Reset ciudad], olvidá la ciudad entendida y volvé a preguntarla.
+- Si contiene [Reset fechas], olvidá fechas y volvé a pedirlas si hacen falta.
+- Si contiene [Reset total], olvidá todo y empezá de cero preguntando la ciudad.
 `.trim();
 
 const ollamaLLM = new Ollama({
@@ -53,7 +44,8 @@ const buscarBalneariosPorCiudadTool = tool({
         try {
             const balnearios = await busqueda.buscarBalneariosPorCiudad(ciudad);
             if (!balnearios || balnearios.length === 0) return "No se encontraron balnearios en esa ciudad.";
-            return balnearios.map(bal => {
+            const top = balnearios.slice(0, 5);
+            return top.map(bal => {
                 const tel = bal.telefono ? ` — Tel: ${bal.telefono}` : "";
                 return `- ${bal.nombre} — Dirección: ${bal.direccion}${tel} — /balneario/${bal.id_balneario}`;
             }).join('\n');
@@ -71,7 +63,7 @@ const listarBalneariosTool = tool({
         try {
             const lista = await busqueda.listarBalneariosConCiudades();
             if (!lista || lista.length === 0) return "No hay balnearios registrados.";
-            return lista.map(bal => `- ${bal.nombre} — ${bal.ciudad || "Ciudad"} — ${bal.direccion} — /balneario/${bal.id_balneario}`).join('\n');
+            return lista.slice(0, 5).map(bal => `- ${bal.nombre} — ${bal.ciudad || "Ciudad"} — /balneario/${bal.id_balneario}`).join('\n');
         } catch (error) {
             return `Error al listar balnearios: ${error.message}`;
         }
@@ -86,8 +78,7 @@ const listarCiudadesTool = tool({
         try {
             const ciudades = await busqueda.listarCiudades();
             if (!ciudades || ciudades.length === 0) return "No hay ciudades registradas.";
-            // Enlaza al listado de balnearios de cada ciudad
-            return ciudades.map(ciudad => `- ${ciudad.nombre} — /ciudades/${ciudad.id_ciudad}/balnearios`).join('\n');
+            return ciudades.slice(0, 5).map(ciudad => `- ${ciudad.nombre}`).join('\n');
         } catch (error) {
             return `Error al listar ciudades: ${error.message}`;
         }
@@ -108,9 +99,7 @@ const filtrarBalneariosPorCiudadYServiciosTool = tool({
         try {
             const balnearios = await busqueda.filtrarBalneariosPorCiudadYServicios(ciudad, servicios);
             if (!balnearios || balnearios.length === 0) return "No se encontraron balnearios en esa ciudad con esos servicios.";
-            return balnearios.map(bal => 
-                `- ${bal.nombre} — ${bal.ciudad || "Ciudad"} — ${bal.direccion} — /balneario/${bal.id_balneario}`
-            ).join('\n');
+            return balnearios.slice(0, 5).map(bal => `- ${bal.nombre} — ${bal.ciudad || "Ciudad"} — /balneario/${bal.id_balneario}`).join('\n');
         } catch (error) {
             return `Error al filtrar balnearios: ${error.message}`;
         }
@@ -132,9 +121,7 @@ const filtrarBalneariosPorServiciosTool = tool({
             // Llama con ciudad vacía para que solo filtre por servicios
             const balnearios = await busqueda.filtrarBalneariosPorCiudadYServicios("", servicios);
             if (!balnearios || balnearios.length === 0) return "No se encontraron balnearios con esos servicios.";
-            return balnearios.map(bal => 
-                `- ${bal.nombre} — ${bal.ciudad || "Ciudad"} — ${bal.direccion} — /balneario/${bal.id_balneario}`
-            ).join('\n');
+            return balnearios.slice(0, 5).map(bal => `- ${bal.nombre} — ${bal.ciudad || "Ciudad"} — /balneario/${bal.id_balneario}`).join('\n');
         } catch (error) {
             return `Error al filtrar balnearios: ${error.message}`;
         }
@@ -161,7 +148,10 @@ const buscarDisponibilidadTool = tool({
             if (!lista || lista.length === 0) {
                 return "No hay balnearios que cumplan con esos filtros.";
             }
-            return lista.map(bal => `- ${bal.nombre} — ${bal.ciudad || "Ciudad"} — ${bal.direccion} — /balneario/${bal.id_balneario}`).join('\n');
+            return lista.slice(0, 5).map(bal => {
+                const qp = (fechaInicio && fechaFin) ? `?fi=${fechaInicio}&ff=${fechaFin}` : "";
+                return `- ${bal.nombre} — ${bal.ciudad || "Ciudad"} — /balneario/${bal.id_balneario}${qp}`;
+            }).join('\n');
         } catch (error) {
             return `Error al buscar disponibilidad: ${error.message}`;
         }
@@ -179,7 +169,7 @@ const buscarBalnearioPorNombreTool = tool({
         try {
             const lista = await busqueda.buscarBalneariosPorNombre(nombre);
             if (!lista || lista.length === 0) return "No se encontraron balnearios con ese nombre.";
-            return lista.map(bal => `- ${bal.nombre} — ${bal.ciudad || "Ciudad"} — ${bal.direccion} — /balneario/${bal.id_balneario}`).join('\n');
+            return lista.slice(0, 5).map(bal => `- ${bal.nombre} — ${bal.ciudad || "Ciudad"} — /balneario/${bal.id_balneario}`).join('\n');
         } catch (error) {
             return `Error al buscar por nombre: ${error.message}`;
         }
@@ -197,7 +187,7 @@ const listarMisBalneariosTool = tool({
         try {
             const lista = await busqueda.listarBalneariosDelDueno(auth_id);
             if (!lista || lista.length === 0) return "No tenés balnearios aún. Andá a /tusbalnearios para crear el primero.";
-            return lista.map(bal => `- ${bal.nombre} — ${bal.ciudad || "Ciudad"} — ${bal.direccion} — /balneario/${bal.id_balneario}`).join('\n');
+            return lista.slice(0, 5).map(bal => `- ${bal.nombre} — ${bal.ciudad || "Ciudad"} — /balneario/${bal.id_balneario}`).join('\n');
         } catch (error) {
             return `Error al listar tus balnearios: ${error.message}`;
         }
