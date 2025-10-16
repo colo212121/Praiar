@@ -6,6 +6,7 @@ import nodemailer from 'nodemailer';
 import { transporter, sendEmail, createReservaNotificationEmail, createApprovalEmail, createRejectionEmail } from './emailConfig.js';
 import morgan from 'morgan';
 import { elAgente } from './Agente/src/agent.js';
+import { Busqueda } from './Agente/lib/busqueda.js';
 import 'dotenv/config';
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 
@@ -47,6 +48,60 @@ if (!process.env.BREVO_API_KEY) {
 }
 
 const chatMemory = new Map();
+const chatState = new Map(); // chatId -> { ciudad: string|null, balnearioId: number|null }
+let ciudadesCache = null;
+let ciudadesCacheTs = 0;
+const busquedaRapida = new Busqueda();
+
+function normalizeText(s) {
+  try {
+    return (s || '')
+      .toString()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .trim();
+  } catch {
+    return (s || '').toString().toLowerCase();
+  }
+}
+
+function extractDateRange(raw) {
+  const text = (raw || '').toString();
+  // Try ISO first: 2025-01-05 ... 2025-01-10
+  const iso = text.match(/(\d{4}-\d{2}-\d{2}).{0,10}(\d{4}-\d{2}-\d{2})/);
+  if (iso) {
+    return { fi: iso[1], ff: iso[2] };
+  }
+  // dd/mm/yyyy ... dd/mm/yyyy
+  const dmy = text.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}).{0,10}(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/);
+  if (dmy) {
+    const toIso = (s) => {
+      const [d, m, y] = s.replace(/-/g,'/').split('/').map(x=>x.padStart(2,'0'));
+      return `${y}-${m}-${d}`;
+    };
+    return { fi: toIso(dmy[1]), ff: toIso(dmy[2]) };
+  }
+  return null;
+}
+async function getCiudadesLista() {
+  const now = Date.now();
+  if (ciudadesCache && (now - ciudadesCacheTs) < 5 * 60 * 1000) {
+    return ciudadesCache;
+  }
+  try {
+    const { data, error } = await supabase
+      .from('ciudades')
+      .select('nombre')
+      .order('nombre', { ascending: true });
+    if (error) throw error;
+    ciudadesCache = (data || []).map(c => c.nombre).filter(Boolean);
+    ciudadesCacheTs = now;
+  } catch (e) {
+    ciudadesCache = [];
+  }
+  return ciudadesCache;
+}
 
 app.post('/api/chat', async (req, res) => {
   const { message, session, chatId } = req.body;
@@ -56,9 +111,13 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     // Inyecta contexto de sesión al mensaje y ejecuta el agente con una sola firma
+    const ciudadesDisponibles = await getCiudadesLista();
     const sessionContextLine = session
       ? `\n[Contexto de sesión]\n- isLoggedIn: ${!!session.isLoggedIn}\n- esPropietario: ${!!session.esPropietario}\n- auth_id: ${session.auth_id || 'N/A'}\n- nombre: ${session.nombre || 'N/A'}\n- email: ${session.email || 'N/A'}\n`
       : `\n[Contexto de sesión]\n- isLoggedIn: false\n`;
+    const ciudadesBlock = ciudadesDisponibles.length
+      ? `\n[Ciudades disponibles]\n${ciudadesDisponibles.join(', ')}`
+      : '';
     const history = chatId ? (chatMemory.get(chatId) || []) : [];
     // Detectar intents de reseteo
     const lower = (message || '').toLowerCase();
@@ -72,11 +131,117 @@ app.post('/api/chat', async (req, res) => {
       resetMarker = '\n[Reset fechas]';
     }
     const historyPrefix = history.length ? `\n[Historial breve]\n${history.join('\n')}` : '';
-    const finalMessage = `${sessionContextLine}${historyPrefix}${resetMarker}\n${message}`;
+    const finalMessage = `${sessionContextLine}${ciudadesBlock}${historyPrefix}${resetMarker}\n${message}`;
+
+    // Saludo y onboarding si el usuario solo saluda o si no hay contexto
+    const isGreeting = /^(hola|buenas|hello|hey|qué tal|como andas|como estas)[!.\s]*$/i.test(message.trim());
+    if (isGreeting || history.length === 0) {
+      const saludo = 'Hola, ¿cómo estás? Decime la ciudad a la que querés ir y, si querés, las fechas. Después elegimos el balneario y te doy el link listo.';
+      if (!isGreeting) {
+        // continúa con el agente si no fue un saludo puro
+      } else {
+        // Responder directo al saludo y no invocar al LLM innecesariamente
+        if (chatId) {
+          const next = [...history, `U: ${message}`, `A: ${saludo}`];
+          chatMemory.set(chatId, next.slice(-6));
+        }
+        return res.json({ response: saludo });
+      }
+    }
+
+    // Fallback NLU local + estado conversacional
+    try {
+      const normMsg = normalizeText(message);
+      const matchedCiudades = (ciudadesDisponibles || []).filter(c => {
+        const nc = normalizeText(c);
+        return nc && normMsg.includes(nc);
+      });
+      const state = chatId ? (chatState.get(chatId) || { ciudad: null, balnearioId: null }) : { ciudad: null, balnearioId: null };
+
+      // Paso 1: detectar ciudad
+      if (matchedCiudades.length === 1) {
+        const ciudadElegida = matchedCiudades[0];
+        state.ciudad = ciudadElegida;
+        state.balnearioId = null; // reset balneario si cambió ciudad
+        if (chatId) chatState.set(chatId, state);
+
+        const lista = await busquedaRapida.buscarBalneariosPorCiudad(ciudadElegida);
+        if (!lista || lista.length === 0) {
+          const texto = `No encontré balnearios en ${ciudadElegida}. Probá con otra ciudad.`;
+          if (chatId) {
+            const next = [...history, `U: ${message}`, `A: ${texto}`];
+            chatMemory.set(chatId, next.slice(-6));
+          }
+          return res.json({ response: texto });
+        }
+        const top = lista.slice(0, 5).map(b => `- ${b.nombre} — /balneario/${b.id_balneario}`).join('\n');
+        const texto = `Perfecto, ${ciudadElegida}. Elegí un balneario de esta lista (máx 5):\n${top}`;
+        if (chatId) {
+          const next = [...history, `U: ${message}`, `A: ${texto}`];
+          chatMemory.set(chatId, next.slice(-6));
+        }
+        return res.json({ response: texto });
+      }
+
+      // Paso 2: si ya hay ciudad en estado, intentar detectar balneario por nombre dentro de la ciudad
+      if (state.ciudad) {
+        const lista = await busquedaRapida.buscarBalneariosPorCiudad(state.ciudad);
+        const candidatos = (lista || []).filter(b => normalizeText(b.nombre) && normMsg.includes(normalizeText(b.nombre)));
+        if (candidatos.length === 1) {
+          const elegido = candidatos[0];
+          state.balnearioId = elegido.id_balneario;
+          if (chatId) chatState.set(chatId, state);
+          const texto = `Genial, ${elegido.nombre}. Decime el rango de fechas (por ejemplo: 2025-01-05 a 2025-01-10).`;
+          if (chatId) {
+            const next = [...history, `U: ${message}`, `A: ${texto}`];
+            chatMemory.set(chatId, next.slice(-6));
+          }
+          return res.json({ response: texto });
+        }
+      }
+
+      // Paso 3: si ya hay balneario elegido, intentar detectar fechas y verificar disponibilidad
+      if (state.ciudad && state.balnearioId) {
+        const rango = extractDateRange(message);
+        if (rango && rango.fi && rango.ff) {
+          // Verificar disponibilidad usando el listado general y filtrando por id
+          const disponibles = await busquedaRapida.listarBalneariosDisponibles({ ciudad: state.ciudad, servicios: [], fechaInicio: rango.fi, fechaFin: rango.ff });
+          const ok = (disponibles || []).some(b => b.id_balneario === state.balnearioId);
+          if (ok) {
+            const link = `/balneario/${state.balnearioId}?fi=${rango.fi}&ff=${rango.ff}`;
+            const texto = `${link}\nListo, te llevo con esas fechas. Si querés cambiar algo, decime.`;
+            if (chatId) {
+              const next = [...history, `U: ${message}`, `A: ${texto}`];
+              chatMemory.set(chatId, next.slice(-6));
+            }
+            return res.json({ response: texto });
+          } else {
+            const texto = `No hay disponibilidad para esas fechas. ¿Querés probar con otro rango o ver otros balnearios en ${state.ciudad}?`;
+            if (chatId) {
+              const next = [...history, `U: ${message}`, `A: ${texto}`];
+              chatMemory.set(chatId, next.slice(-6));
+            }
+            return res.json({ response: texto });
+          }
+        }
+      }
+    } catch {}
 
     const respuesta = await elAgente.run(finalMessage);
     // Normalizar a texto plano y ocultar bloques <think>
-    let text = typeof respuesta === 'string' ? respuesta : (respuesta?.data?.result || '');
+    let text = '';
+    if (typeof respuesta === 'string') {
+      text = respuesta;
+    } else if (respuesta && typeof respuesta === 'object') {
+      // Intentar múltiples formas comunes
+      text = respuesta.data?.result
+        || respuesta.data?.message
+        || respuesta.message
+        || respuesta.output?.text
+        || respuesta.output
+        || respuesta.result
+        || '';
+    }
     if (typeof text !== 'string') text = String(text || '');
     const cleanText = text.replace(/<think>[\s\S]*?<\/think>/i, '').trim();
 
@@ -89,7 +254,16 @@ app.post('/api/chat', async (req, res) => {
     res.json({ response: cleanText });
   } catch (error) {
     console.error('Error en el agente:', error);
-    res.status(500).json({ error: 'Error procesando la respuesta del agente' });
+    // Fallback amable para no romper el flujo en el frontend
+    const fallback = 'Tuve un problema procesando tu pedido. Decime la ciudad (por ejemplo: "Mar del Plata") y, si querés, las fechas (YYYY-MM-DD a YYYY-MM-DD). Te voy guiando.';
+    try {
+      if (chatId) {
+        const history = chatMemory.get(chatId) || [];
+        const next = [...history, `U: ${req.body?.message || ''}`, `A: ${fallback}`];
+        chatMemory.set(chatId, next.slice(-6));
+      }
+    } catch {}
+    res.json({ response: fallback });
   }
 });
 

@@ -5,7 +5,12 @@ import { enviarMensajeAlBackend, getSesionContext } from './api';
 import './AgenteComponent.css';
 
 export default function App() {
-  const [mensajes, setMensajes] = useState([]);
+  const [mensajes, setMensajes] = useState([
+    {
+      rol: 'asistente',
+      texto: '¡Hola! Decime la ciudad a la que querés ir y, si querés, las fechas. Después te muestro los balnearios y te paso el link listo.'
+    }
+  ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -13,30 +18,6 @@ export default function App() {
   const navigate = useNavigate();
 
   const rol = !session?.isLoggedIn ? 'invitado' : (session?.esPropietario ? 'dueno' : 'cliente');
-
-  const sugerencias = {
-    invitado: [
-      'Quiero ver balnearios populares',
-      'Mostrar ciudades con más opciones',
-      '¿Cómo reservo una carpa?'
-    ],
-    cliente: [
-      'Buscar disponibilidad este fin de semana en Mar del Plata',
-      'Filtrar balnearios con Wi-Fi y pileta',
-      'Ver mapa de ciudades /ciudades'
-    ],
-    dueno: [
-      'Ver mis balnearios /tusbalnearios',
-      'Crear un nuevo balneario',
-      'Ver reservas de la última semana'
-    ]
-  };
-
-  const accionesRapidas = [
-    'Cambiar ciudad',
-    'Cambiar fechas',
-    'Reiniciar'
-  ];
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -52,16 +33,13 @@ export default function App() {
       const textoPlano = typeof respuesta === 'string' ? respuesta : JSON.stringify(respuesta);
       setMensajes(ms => [...ms, { rol: 'asistente', texto: textoPlano }]);
 
-      // Auto-navegar si hay exactamente una ruta interna en la respuesta
+      // Auto-navegar SOLO si la PRIMERA línea es un link interno final
       try {
-        const routeMatches = (textoPlano.match(/\/[\w\-\/.?#=&%]+/g) || []).filter(r => !/^https?:\/\//i.test(r));
-        const uniqueRoutes = Array.from(new Set(routeMatches));
-        if (uniqueRoutes.length === 1) {
-          const route = uniqueRoutes[0];
-          if (route.startsWith('/')) {
-            // Usar navigate para rutas internas
-            navigate(route);
-          }
+        const lines = textoPlano.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        const first = lines[0] || '';
+        const isFinalLink = /^\/balneario\/[\w\-]+(\?[\w\-\/.?#=&%]+)?$/.test(first);
+        if (isFinalLink) {
+          navigate(first);
         }
       } catch {}
     } catch (err) {
@@ -75,34 +53,7 @@ export default function App() {
     <div className="main-chat-bg">
       <div className="chat-box">
         <h1 className="chat-title">Asistente Praiar</h1>
-        <div className="chat-sugerencias">
-          {sugerencias[rol].map((txt, i) => (
-            <button
-              key={i}
-              type="button"
-              className="chip"
-              onClick={() => setInput(txt)}
-              disabled={loading}
-            >
-              {txt}
-            </button>
-          ))}
-          {accionesRapidas.map((txt, i) => (
-            <button
-              key={`a-${i}`}
-              type="button"
-              className="chip sec"
-              onClick={() => {
-                if (txt === 'Cambiar ciudad') setInput('Cambiar ciudad');
-                else if (txt === 'Cambiar fechas') setInput('Me equivoqué de fecha');
-                else setInput('Reiniciar');
-              }}
-              disabled={loading}
-            >
-              {txt}
-            </button>
-          ))}
-        </div>
+        {/* Sugerencias removidas para una conversación más natural */}
         <Chat mensajes={mensajes} loading={loading} />
         <form className="chat-form" onSubmit={handleSend}>
           <input
