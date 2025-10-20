@@ -49,6 +49,7 @@ if (!process.env.BREVO_API_KEY) {
 
 const chatMemory = new Map();
 const chatState = new Map(); // chatId -> { ciudad: string|null, balnearioId: number|null }
+const chatBalnearioState = new Map(); // chatId -> { balnearioId, fi, ff, seleccion: { id_ubicacion, label }, datos: { nombre, apellido, email, telefono }, step }
 let ciudadesCache = null;
 let ciudadesCacheTs = 0;
 const busquedaRapida = new Busqueda();
@@ -324,6 +325,257 @@ app.post('/api/chat', async (req, res) => {
     res.json({ response: fallback });
   }
 });
+
+// Chat específico para la página de balneario: pedir/confirmar carpa y datos y crear reserva
+app.post('/api/chat-balneario', async (req, res) => {
+  const { message, session, chatId, context } = req.body || {};
+  const balnearioId = Number(context?.balnearioId);
+  const fi = context?.fi;
+  const ff = context?.ff;
+  if (!message || !chatId || !balnearioId || !fi || !ff) {
+    return res.status(400).json({ error: 'Faltan datos: message, chatId, balnearioId, fi, ff' });
+  }
+
+  // Estado por conversación en balneario
+  const st = chatBalnearioState.get(chatId) || {
+    balnearioId,
+    fi,
+    ff,
+    lista: [],
+    seleccion: null,
+    datos: { nombre: null, apellido: null, email: null, telefono: null, direccion: null, ciudad: null, codigo_postal: null, pais: null, metodo_pago: null },
+    step: 'inicio'
+  };
+  // Si cambia el contexto, actualizar
+  const contextChanged = st.balnearioId !== balnearioId || st.fi !== fi || st.ff !== ff;
+  st.balnearioId = balnearioId;
+  st.fi = fi;
+  st.ff = ff;
+  if (contextChanged) {
+    st.lista = [];
+    st.seleccion = null;
+    st.datos = { nombre: null, apellido: null, email: null, telefono: null, direccion: null, ciudad: null, codigo_postal: null, pais: null, metodo_pago: null };
+    st.step = 'inicio';
+  }
+
+  function normalize(s) { return (s || '').toString().trim().toLowerCase(); }
+  const msg = normalize(message);
+
+  try {
+    // Paso 1: Listar ubicaciones disponibles (y permitir selección numérica inmediata)
+    if (st.step === 'inicio' || !st.step) {
+      // Traer ubicaciones disponibles numeradas
+      const resp = await fetch(`${SERVER_URL}/api/balneario/${st.balnearioId}/ubicaciones-disponibles?fi=${encodeURIComponent(st.fi)}&ff=${encodeURIComponent(st.ff)}`);
+      const disponibles = await resp.json();
+      if (!Array.isArray(disponibles) || disponibles.length === 0) {
+        chatBalnearioState.set(chatId, { ...st, step: 'sin_disponibilidad', lista: [] });
+        return res.json({ response: 'No hay carpas disponibles en ese rango. Probemos con otras fechas.' });
+      }
+      st.lista = disponibles.map((u, idx) => ({
+        idx: idx + 1,
+        id_ubicacion: u.id_carpa,
+        label: `#${u.posicion} (${u.tipo_nombre || 'carpa'})`
+      }));
+      // Si el usuario ya mandó un número, tomarlo ahora
+      const numInline = parseInt((message || '').toString().replace(/[^0-9]/g, ''), 10);
+      if (!isNaN(numInline) && numInline > 0) {
+        const elegido = st.lista.find(it => it.idx === numInline);
+        if (elegido) {
+          st.seleccion = elegido;
+          st.step = 'pidiendo_nombre';
+          chatBalnearioState.set(chatId, st);
+          return res.json({ response: `Perfecto, elegiste ${elegido.label}. ¿Cuál es tu nombre?` });
+        }
+      }
+      st.step = 'esperando_seleccion';
+      chatBalnearioState.set(chatId, st);
+      const listado = st.lista.slice(0, 20).map(item => `- ${item.idx}. ${item.label}`).join('\n');
+      return res.json({ response: `Estas son las carpas libres para ${st.fi} a ${st.ff} (máx 20):\n${listado}\nElegí un número.` });
+    }
+
+    // Paso 2: Selección por número
+    if (st.step === 'esperando_seleccion') {
+      const num = parseInt((message || '').toString().replace(/[^0-9]/g, ''), 10);
+      const elegido = st.lista.find(it => it.idx === num);
+      if (!elegido) {
+        return res.json({ response: 'No entendí el número. Decime un número de la lista.' });
+      }
+      st.seleccion = elegido;
+      st.step = 'pidiendo_nombre';
+      chatBalnearioState.set(chatId, st);
+      return res.json({ response: `Perfecto, elegiste ${elegido.label}. ¿Cuál es tu nombre?` });
+    }
+
+    // Paso 3: Datos del cliente
+    if (st.step === 'pidiendo_nombre') {
+      if (msg.length < 2) return res.json({ response: 'Necesito tu nombre (mínimo 2 letras).' });
+      st.datos.nombre = message.trim();
+      st.step = 'pidiendo_apellido';
+      chatBalnearioState.set(chatId, st);
+      return res.json({ response: '¿Y tu apellido?' });
+    }
+    if (st.step === 'pidiendo_apellido') {
+      if (msg.length < 2) return res.json({ response: 'Decime tu apellido (mínimo 2 letras).' });
+      st.datos.apellido = message.trim();
+      st.step = 'pidiendo_email';
+      chatBalnearioState.set(chatId, st);
+      return res.json({ response: 'Dejame tu email.' });
+    }
+    if (st.step === 'pidiendo_email') {
+      const email = message.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.json({ response: 'Ese email no parece válido. Probá de nuevo.' });
+      }
+      st.datos.email = email;
+      st.step = 'pidiendo_telefono';
+      chatBalnearioState.set(chatId, st);
+      return res.json({ response: '¿Tu teléfono?' });
+    }
+    if (st.step === 'pidiendo_telefono') {
+      const tel = message.trim();
+      if (tel.length < 6) return res.json({ response: 'Necesito un teléfono válido (mínimo 6 dígitos).' });
+      st.datos.telefono = tel;
+      st.step = 'pidiendo_direccion';
+      chatBalnearioState.set(chatId, st);
+      return res.json({ response: '¿Cuál es tu dirección (calle y número)?' });
+    }
+
+    if (st.step === 'pidiendo_direccion') {
+      if (!message.trim()) return res.json({ response: 'Necesito tu dirección.' });
+      st.datos.direccion = message.trim();
+      st.step = 'pidiendo_ciudad';
+      chatBalnearioState.set(chatId, st);
+      return res.json({ response: 'Ciudad de residencia?' });
+    }
+
+    if (st.step === 'pidiendo_ciudad') {
+      if (!message.trim()) return res.json({ response: 'Decime tu ciudad.' });
+      st.datos.ciudad = message.trim();
+      st.step = 'pidiendo_codigo_postal';
+      chatBalnearioState.set(chatId, st);
+      return res.json({ response: 'Código postal?' });
+    }
+
+    if (st.step === 'pidiendo_codigo_postal') {
+      if (!message.trim()) return res.json({ response: 'Decime tu código postal.' });
+      st.datos.codigo_postal = message.trim();
+      st.step = 'pidiendo_pais';
+      chatBalnearioState.set(chatId, st);
+      return res.json({ response: 'País/Región?' });
+    }
+
+    if (st.step === 'pidiendo_pais') {
+      if (!message.trim()) return res.json({ response: 'Decime tu país o región.' });
+      st.datos.pais = message.trim();
+      st.step = 'pidiendo_metodo_pago';
+      chatBalnearioState.set(chatId, st);
+      return res.json({ response: '¿Método de pago? (por ejemplo: Mercado Pago o efectivo/transferencia)' });
+    }
+
+    if (st.step === 'pidiendo_metodo_pago') {
+      const raw = (message || '').toString().toLowerCase();
+      let metodo = 'manual';
+      if (/mercado\s*pago|mercadopago|mp/.test(raw)) metodo = 'mercadopago';
+      if (/tarjeta/.test(raw)) metodo = 'mercadopago';
+      st.datos.metodo_pago = metodo;
+      st.step = 'confirmacion';
+      chatBalnearioState.set(chatId, st);
+      return res.json({ response: `Confirmamos la reserva de ${st.seleccion.label} del ${st.fi} al ${st.ff} a nombre de ${st.datos.nombre} ${st.datos.apellido}.\nContacto: ${st.datos.email}, ${st.datos.telefono}.\nDirección: ${st.datos.direccion}, ${st.datos.ciudad} (${st.datos.codigo_postal}), ${st.datos.pais}.\nMétodo de pago: ${st.datos.metodo_pago}.\nRespondé "sí" para confirmar.` });
+    }
+
+    // Paso 4: Confirmación y creación de reserva
+    if (st.step === 'confirmacion') {
+      const afirm = /(si|sí|dale|confirmo|ok|de una)/i.test(message);
+      if (!afirm) {
+        return res.json({ response: 'Sin confirmación no creo la reserva. Decime cuando quieras continuar.' });
+      }
+      // Crear reserva con backend existente
+      const usuarioId = session?.auth_id || session?.id_usuario || session?.id || null;
+      if (!usuarioId) {
+        return res.json({ response: 'Necesitás estar logueado para crear la reserva.' });
+      }
+      const body = {
+        id_usuario: usuarioId,
+        id_ubicaciones: [st.seleccion.id_ubicacion],
+        id_balneario: st.balnearioId,
+        fecha_inicio: st.fi,
+        fecha_salida: st.ff,
+        metodo_pago: st.datos.metodo_pago || 'manual',
+        nombre: st.datos.nombre,
+        apellido: st.datos.apellido,
+        email: st.datos.email,
+        telefono: st.datos.telefono,
+        direccion: st.datos.direccion || '',
+        ciudad: st.datos.ciudad || '',
+        codigo_postal: st.datos.codigo_postal || '',
+        pais: st.datos.pais || '',
+        precio_total: 0
+      };
+      const r = await fetch(`${SERVER_URL}/api/reserva`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const jr = await r.json();
+      if (!r.ok) {
+        return res.json({ response: jr?.error || 'No se pudo crear la reserva.' });
+      }
+      const id_reserva = jr?.id_reserva;
+      st.step = 'finalizado';
+      chatBalnearioState.set(chatId, st);
+      // Link directo a la sección de reservas del frontend para descargar el comprobante
+      const comprobantePath = `/tusreservas?reserva=${encodeURIComponent(id_reserva)}`;
+      return res.json({ response: `${comprobantePath}\nReserva realizada con éxito. Ver comprobante.` });
+    }
+
+    // Estado finalizado o sin match
+    return res.json({ response: 'Podemos listar carpas libres, elegir una y reservar. Decime si querés arrancar de nuevo.' });
+  } catch (e) {
+    return res.json({ response: 'Se me complicó un poco. Probemos de nuevo en un momento.' });
+  }
+});
+
+// Disponibilidad de ubicaciones por balneario y rango
+app.get('/api/balneario/:id/ubicaciones-disponibles', async (req, res) => {
+  const { id } = req.params;
+  const { fi, ff } = { fi: req.query.fi, ff: req.query.ff };
+  if (!fi || !ff) return res.status(400).json({ error: 'Faltan fechas fi y ff' });
+  try {
+    // Todas las ubicaciones del balneario
+    const { data: ubicaciones, error: uErr } = await supabase
+      .from('ubicaciones')
+      .select('id_carpa, posicion, id_tipo_ubicacion')
+      .eq('id_balneario', id);
+    if (uErr) return res.status(500).json({ error: 'Error trayendo ubicaciones' });
+
+    // Reservas activas que se solapen
+    const { data: reservas, error: rErr } = await supabase
+      .from('reservas')
+      .select('id_reserva, fecha_inicio, fecha_salida, Reservas_Ubicaciones(id_ubicacion)')
+      .eq('id_balneario', id)
+      .lte('fecha_inicio', ff)
+      .gte('fecha_salida', fi);
+    if (rErr) return res.status(500).json({ error: 'Error trayendo reservas' });
+
+    const ocupadas = new Set();
+    (reservas || []).forEach(r => {
+      (r.Reservas_Ubicaciones || []).forEach(v => {
+        ocupadas.add(v.id_ubicacion);
+      });
+    });
+
+    // Mapear nombres de tipos
+    const { data: tipos } = await supabase.from('tipos_ubicaciones').select('id_tipo_ubicaciones, nombre');
+    const tipoMap = new Map((tipos || []).map(t => [t.id_tipo_ubicaciones, t.nombre]));
+
+    const libres = (ubicaciones || []).filter(u => !ocupadas.has(u.id_carpa)).map(u => ({
+      id_carpa: u.id_carpa,
+      posicion: u.posicion,
+      id_tipo_ubicacion: u.id_tipo_ubicacion,
+      tipo_nombre: tipoMap.get(u.id_tipo_ubicacion) || null
+    }));
+    res.json(libres);
+  } catch (e) {
+    res.status(500).json({ error: 'Error calculando disponibilidad' });
+  }
+});
+
 
 // post /api/login
 app.post('/api/login', async (req, res) => {
@@ -1665,7 +1917,7 @@ app.post('/api/reserva', async (req, res) => {
       console.error('Error enviando email de notificación:', e?.message || e);
     }
 
-    res.status(200).json({ mensaje: "Reserva realizada con éxito. Se notificó al dueño del balneario por mail." });
+    res.status(200).json({ mensaje: "Reserva realizada con éxito. Se notificó al dueño del balneario por mail.", id_reserva: reservaInsertada.id_reserva });
 
   } catch (error) {
     console.error("Error en /api/reserva:", error);
@@ -2221,3 +2473,5 @@ app.put('/api/reserva/reject/:id_reserva', async (req, res) => {
     res.status(500).json({ error: 'Error procesando rechazo' });
   }
 });
+
+// Nota: la generación/entrega de PDF se mantiene como estaba previamente fuera del chat.

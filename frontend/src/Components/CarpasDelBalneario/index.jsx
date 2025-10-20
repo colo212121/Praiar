@@ -18,6 +18,7 @@ import EditarCarpaModal from "./EditarCarpaModal";
 import PreciosBalnearioTabla from "./PreciosBalnearioTabla";
 import EditarPrecioModal from "./EditarPrecioModal";
 import ReservaManualModal from "./ReservaManualModal";
+// Chat del agente se mantiene en su apartado original, no se renderiza aquí
 
 const CARD_WIDTH = 340;
 const RESEÑAS_POR_VISTA = 2;
@@ -1147,6 +1148,7 @@ function CarpasDelBalneario(props) {
         fechaFin={fechaFin}
         onReservar={reservarManual}
       />
+      {/* El chat del agente no se duplica aquí */}
     </div>
   );
 }
