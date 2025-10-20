@@ -10,8 +10,9 @@ function formatResponse(response){
 }
 
 const mensajeBienvenidaDefault = `
-🎓 Asistente de Estudiantes 
+🌊 Asistente de Praiar
 --------------------------------------
+Decime una ciudad y te muestro los balnearios disponibles.
 Escribí 'exit' o presioná Ctrl+C para salir
 `
 

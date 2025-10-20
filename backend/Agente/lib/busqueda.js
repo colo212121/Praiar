@@ -343,6 +343,40 @@ class Busqueda {
 
     return resultado;
   }
+  async verificarDisponibilidadDeBalneario(idBalneario, fechaInicio, fechaFin) {
+    const id = parseInt(idBalneario);
+    if (!id || !fechaInicio || !fechaFin) return { disponibles: 0 };
+
+    // Traer ubicaciones del balneario
+    const { data: ubicaciones, error: ubicacionesError } = await supabase
+      .from('ubicaciones')
+      .select('id_ubicacion')
+      .eq('id_balneario', id);
+    if (ubicacionesError) throw ubicacionesError;
+
+    const todasUbicaciones = (ubicaciones || []).map(u => u.id_ubicacion);
+    if (todasUbicaciones.length === 0) return { disponibles: 0 };
+
+    // Reservas solapadas dentro del rango
+    const { data: reservas, error: reservasError } = await supabase
+      .from('reservas')
+      .select('Reservas_Ubicaciones ( id_ubicacion ), fecha_inicio, fecha_salida')
+      .eq('id_balneario', id)
+      .lte('fecha_inicio', fechaFin)
+      .gte('fecha_salida', fechaInicio);
+    if (reservasError) throw reservasError;
+
+    const reservadas = new Set();
+    (reservas || []).forEach(r => {
+      (r.Reservas_Ubicaciones || []).forEach(v => {
+        if (v?.id_ubicacion != null) reservadas.add(v.id_ubicacion);
+      });
+    });
+
+    const libres = todasUbicaciones.filter(idU => !reservadas.has(idU));
+    return { disponibles: libres.length };
+  }
 }
+
 
 export { Busqueda };

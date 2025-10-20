@@ -69,12 +69,11 @@ function normalizeText(s) {
 function extractDateRange(raw) {
   const text = (raw || '').toString();
   // Try ISO first: 2025-01-05 ... 2025-01-10
-  const iso = text.match(/(\d{4}-\d{2}-\d{2}).{0,10}(\d{4}-\d{2}-\d{2})/);
-  if (iso) {
-    return { fi: iso[1], ff: iso[2] };
-  }
+  const iso = text.match(/(\d{4}-\d{2}-\d{2}).{0,20}(\d{4}-\d{2}-\d{2})/);
+  if (iso) return { fi: iso[1], ff: iso[2] };
+
   // dd/mm/yyyy ... dd/mm/yyyy
-  const dmy = text.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}).{0,10}(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/);
+  const dmy = text.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}).{0,20}(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/);
   if (dmy) {
     const toIso = (s) => {
       const [d, m, y] = s.replace(/-/g,'/').split('/').map(x=>x.padStart(2,'0'));
@@ -82,6 +81,32 @@ function extractDateRange(raw) {
     };
     return { fi: toIso(dmy[1]), ff: toIso(dmy[2]) };
   }
+
+  // Spanish month names: "del 9 de noviembre al 12 de noviembre de 2025"
+  const lower = text.toLowerCase();
+  const months = {
+    'enero':'01','febrero':'02','marzo':'03','abril':'04','mayo':'05','junio':'06',
+    'julio':'07','agosto':'08','septiembre':'09','setiembre':'09','octubre':'10','noviembre':'11','diciembre':'12',
+    'ene':'01','feb':'02','mar':'03','abr':'04','may':'05','jun':'06','jul':'07','ago':'08','sep':'09','oct':'10','nov':'11','dic':'12'
+  };
+  const monthRegex = '(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)';
+  const rgx = new RegExp(`(?:del?\\s*)?(\\d{1,2})\\s*de\\s*${monthRegex}(?:\\s*de\\s*(\\d{4}))?[^\\d]{0,30}(?:al\\s*)?(\\d{1,2})\\s*de\\s*${monthRegex}(?:\\s*de\\s*(\\d{4}))?`, 'i');
+  const m = lower.match(rgx);
+  if (m) {
+    const d1 = String(m[1]).padStart(2,'0');
+    const mo1 = months[m[2]];
+    const y1 = m[3] ? m[3] : null;
+    const d2 = String(m[4]).padStart(2,'0');
+    const mo2 = months[m[5]];
+    const y2 = m[6] ? m[6] : null;
+    const year = y2 || y1 || String(new Date().getFullYear());
+    const fiYear = y1 || year;
+    const ffYear = y2 || year;
+    if (mo1 && mo2) {
+      return { fi: `${fiYear}-${mo1}-${d1}`, ff: `${ffYear}-${mo2}-${d2}` };
+    }
+  }
+
   return null;
 }
 async function getCiudadesLista() {
@@ -115,9 +140,7 @@ app.post('/api/chat', async (req, res) => {
     const sessionContextLine = session
       ? `\n[Contexto de sesión]\n- isLoggedIn: ${!!session.isLoggedIn}\n- esPropietario: ${!!session.esPropietario}\n- auth_id: ${session.auth_id || 'N/A'}\n- nombre: ${session.nombre || 'N/A'}\n- email: ${session.email || 'N/A'}\n`
       : `\n[Contexto de sesión]\n- isLoggedIn: false\n`;
-    const ciudadesBlock = ciudadesDisponibles.length
-      ? `\n[Ciudades disponibles]\n${ciudadesDisponibles.join(', ')}`
-      : '';
+    const ciudadesBlock = '';
     const history = chatId ? (chatMemory.get(chatId) || []) : [];
     // Detectar intents de reseteo
     const lower = (message || '').toLowerCase();
@@ -131,7 +154,7 @@ app.post('/api/chat', async (req, res) => {
       resetMarker = '\n[Reset fechas]';
     }
     const historyPrefix = history.length ? `\n[Historial breve]\n${history.join('\n')}` : '';
-    const finalMessage = `${sessionContextLine}${ciudadesBlock}${historyPrefix}${resetMarker}\n${message}`;
+    const finalMessage = `${sessionContextLine}${historyPrefix}${resetMarker}\n${message}`;
 
     // Saludo y onboarding si el usuario solo saluda o si no hay contexto
     const isGreeting = /^(hola|buenas|hello|hey|qué tal|como andas|como estas)[!.\s]*$/i.test(message.trim());
@@ -152,6 +175,17 @@ app.post('/api/chat', async (req, res) => {
     // Fallback NLU local + estado conversacional
     try {
       const normMsg = normalizeText(message);
+      // Intent explícito: listar ciudades
+      if (/(listar|lista|que|qué)\s+ciudades/.test(normMsg)) {
+        const ciudades = await getCiudadesLista();
+        const top = (ciudades || []).slice(0, 5);
+        const texto = top.length ? `Estas son algunas ciudades disponibles:\n- ${top.join('\n- ')}` : 'No hay ciudades registradas ahora.';
+        if (chatId) {
+          const next = [...history, `U: ${message}`, `A: ${texto}`];
+          chatMemory.set(chatId, next.slice(-6));
+        }
+        return res.json({ response: texto });
+      }
       const matchedCiudades = (ciudadesDisponibles || []).filter(c => {
         const nc = normalizeText(c);
         return nc && normMsg.includes(nc);
@@ -204,9 +238,9 @@ app.post('/api/chat', async (req, res) => {
       if (state.ciudad && state.balnearioId) {
         const rango = extractDateRange(message);
         if (rango && rango.fi && rango.ff) {
-          // Verificar disponibilidad usando el listado general y filtrando por id
-          const disponibles = await busquedaRapida.listarBalneariosDisponibles({ ciudad: state.ciudad, servicios: [], fechaInicio: rango.fi, fechaFin: rango.ff });
-          const ok = (disponibles || []).some(b => b.id_balneario === state.balnearioId);
+          // Verificar disponibilidad específica del balneario
+          const dispo = await busquedaRapida.verificarDisponibilidadDeBalneario(state.balnearioId, rango.fi, rango.ff);
+          const ok = dispo && typeof dispo.disponibles === 'number' && dispo.disponibles > 0;
           if (ok) {
             const link = `/balneario/${state.balnearioId}?fi=${rango.fi}&ff=${rango.ff}`;
             const texto = `${link}\nListo, te llevo con esas fechas. Si querés cambiar algo, decime.`;
