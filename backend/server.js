@@ -128,6 +128,27 @@ async function getCiudadesLista() {
   return ciudadesCache;
 }
 
+// Intenta inferir un balneario por nombre desde el mensaje (opcionalmente filtra por ciudad)
+async function inferBalnearioIdFromMessage(message, ciudadPreferida = null) {
+  try {
+    const texto = (message || '').toString();
+    const lista = await busquedaRapida.buscarBalneariosPorNombre(texto);
+    if (!lista || lista.length === 0) return null;
+    // Normalizar texto para match inclusivo por nombre
+    const normMsg = normalizeText(texto);
+    let candidatos = lista.filter(b => normMsg.includes(normalizeText(b.nombre)));
+    if (ciudadPreferida) {
+      const normCity = normalizeText(ciudadPreferida);
+      const enCiudad = candidatos.filter(b => normalizeText(b.ciudad || '').includes(normCity));
+      if (enCiudad.length) candidatos = enCiudad;
+    }
+    const primero = candidatos[0] || lista[0];
+    return primero?.id_balneario || null;
+  } catch {
+    return null;
+  }
+}
+
 app.post('/api/chat', async (req, res) => {
   const { message, session, chatId } = req.body;
   if (!message) {
@@ -234,29 +255,32 @@ app.post('/api/chat', async (req, res) => {
         }
       }
 
-      // Paso 3: si ya hay balneario elegido, intentar detectar fechas y verificar disponibilidad
-      if (state.ciudad && state.balnearioId) {
-        const rango = extractDateRange(message);
-        if (rango && rango.fi && rango.ff) {
-          // Verificar disponibilidad específica del balneario
-          const dispo = await busquedaRapida.verificarDisponibilidadDeBalneario(state.balnearioId, rango.fi, rango.ff);
-          const ok = dispo && typeof dispo.disponibles === 'number' && dispo.disponibles > 0;
-          if (ok) {
-            const link = `/balneario/${state.balnearioId}?fi=${rango.fi}&ff=${rango.ff}`;
-            const texto = `${link}\nListo, te llevo con esas fechas. Si querés cambiar algo, decime.`;
-            if (chatId) {
-              const next = [...history, `U: ${message}`, `A: ${texto}`];
-              chatMemory.set(chatId, next.slice(-6));
-            }
-            return res.json({ response: texto });
-          } else {
-            const texto = `No hay disponibilidad para esas fechas. ¿Querés probar con otro rango o ver otros balnearios en ${state.ciudad}?`;
-            if (chatId) {
-              const next = [...history, `U: ${message}`, `A: ${texto}`];
-              chatMemory.set(chatId, next.slice(-6));
-            }
-            return res.json({ response: texto });
+      // Paso 3: fechas -> verificar y devolver link. Si falta balneario en estado, inferirlo del mensaje.
+      const rango = extractDateRange(message);
+      if (rango && rango.fi && rango.ff) {
+        let balId = state.balnearioId;
+        if (!balId) {
+          balId = await inferBalnearioIdFromMessage(message, state.ciudad);
+          if (balId) {
+            state.balnearioId = balId;
+            if (chatId) chatState.set(chatId, state);
           }
+        }
+        if (balId) {
+          let ok = false;
+          try {
+            const dispo = await busquedaRapida.verificarDisponibilidadDeBalneario(balId, rango.fi, rango.ff);
+            ok = dispo && typeof dispo.disponibles === 'number' && dispo.disponibles > 0;
+          } catch {}
+          const link = `/balneario/${balId}?fi=${rango.fi}&ff=${rango.ff}`;
+          const texto = ok
+            ? `${link}\nListo, te llevo con esas fechas. Si querés cambiar algo, decime.`
+            : `${link}\nTe dejo el link con ese rango. Si no ves disponibilidad, probemos otras fechas.`;
+          if (chatId) {
+            const next = [...history, `U: ${message}`, `A: ${texto}`];
+            chatMemory.set(chatId, next.slice(-6));
+          }
+          return res.json({ response: texto });
         }
       }
     } catch {}

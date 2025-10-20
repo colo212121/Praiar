@@ -34,6 +34,23 @@ function CarpasDelBalneario(props) {
   tomorrow.setDate(today.getDate() + 1);
   const defaultFin = tomorrow.toISOString().split('T')[0];
 
+  // Lee fechas desde query params ?fi=YYYY-MM-DD&ff=YYYY-MM-DD
+  const searchParams = new URLSearchParams(location.search || "");
+  const qpFi = searchParams.get('fi');
+  const qpFf = searchParams.get('ff');
+
+  function isIsoDate(s) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+  }
+  function parseIsoToLocalDate(iso) {
+    if (!isIsoDate(iso)) return null;
+    const [y, m, d] = iso.split('-').map(n => parseInt(n, 10));
+    return new Date(y, m - 1, d);
+  }
+
+  const initialFi = props.fechaInicio || location.state?.fechaInicio || (isIsoDate(qpFi) ? qpFi : defaultInicio);
+  const initialFf = props.fechaFin || location.state?.fechaFin || (isIsoDate(qpFf) ? qpFf : defaultFin);
+
   // Estado para imágenes y modal de mapa
   const [imagenesBalneario, setImagenesBalneario] = useState([]);
   const [showGaleria, setShowGaleria] = useState(false);
@@ -44,8 +61,8 @@ function CarpasDelBalneario(props) {
 
   const [rangoFechas, setRangoFechas] = useState([
     {
-      startDate: new Date(props.fechaInicio || location.state?.fechaInicio || defaultInicio),
-      endDate: new Date(props.fechaFin || location.state?.fechaFin || defaultFin),
+      startDate: parseIsoToLocalDate(initialFi) || new Date(initialFi),
+      endDate: parseIsoToLocalDate(initialFf) || new Date(initialFf),
       key: "selection",
     },
   ]);
@@ -107,6 +124,18 @@ function CarpasDelBalneario(props) {
   const baseIndex = resenias.length * Math.floor(EXTEND_FACTOR / 2);
   const [mostrarReservaManual, setMostrarReservaManual] = useState(false);
   const [carpaParaReservar, setCarpaParaReservar] = useState(null);
+
+  // Sincroniza cambios de query params con el rango de fechas del estado
+  useEffect(() => {
+    const fi = searchParams.get('fi');
+    const ff = searchParams.get('ff');
+    if (isIsoDate(fi) && isIsoDate(ff)) {
+      const newStart = parseIsoToLocalDate(fi) || new Date(fi);
+      const newEnd = parseIsoToLocalDate(ff) || new Date(ff);
+      setRangoFechas([{ startDate: newStart, endDate: newEnd, key: 'selection' }]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
 
   // ============== IMÁGENES BALNEARIO ==============
   useEffect(() => {
