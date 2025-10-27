@@ -385,10 +385,12 @@
   border: 1px solid #e1e8ed;
   border-radius: 16px;
   padding: 32px;
-  width: 750px;
+  width: 100%;
+  max-width: 750px;
   box-shadow: 0 8px 24px rgba(0, 90, 132, 0.08);
   position: relative;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .reserva-form::before {
@@ -610,11 +612,14 @@
     padding: 1rem;
     margin: 0.5rem auto;
     gap: 1.5rem;
+    max-width: 100%;
   }
   
   .reserva-form {
     width: 100%;
+    max-width: 100%;
     padding: 24px 20px;
+    box-sizing: border-box;
   }
   
   .reserva-form .form-group {

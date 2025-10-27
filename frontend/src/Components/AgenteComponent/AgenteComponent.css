@@ -180,3 +180,54 @@ button.bg-blue-500:disabled { opacity: 0.6; cursor: not-allowed; }
 .main-chat-bg {
   background: transparent; /* ✅ para que no sobreescriba */
 }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .chat-box {
+    max-width: 95%;
+    padding: 1rem 0.8rem;
+    min-height: 480px;
+  }
+  
+  .chat-box h1 {
+    font-size: 1rem;
+  }
+  
+  .chat-input {
+    font-size: 0.9rem;
+  }
+  
+  .chat-send {
+    font-size: 0.9rem;
+    padding: 0.6em 1em;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-box {
+    max-width: 100%;
+    padding: 0.8rem 0.6rem;
+    min-height: 450px;
+  }
+  
+  .chat-box h1 {
+    font-size: 0.95rem;
+  }
+  
+  .chat-input {
+    font-size: 0.85rem;
+    padding: 0.7em 0.9em;
+  }
+  
+  .chat-send {
+    font-size: 0.85rem;
+    padding: 0.6em 1em;
+  }
+}
+
+/* Estilos para input deshabilitado */
+.chat-input:disabled {
+  background-color: #f0f0f0;
+  cursor: not-allowed;
+  opacity: 0.7;
+}

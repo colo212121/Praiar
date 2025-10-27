@@ -3,10 +3,11 @@ import React from "react";
 function PreciosBalnearioTabla({ precios, esDuenio, abrirModalPrecio }) {
   if (!precios || precios.length === 0) return null;
   return (
-    <div className="precios-balneario-tabla" style={{ marginTop: "2em" }}>
+    <div className="precios-balneario-tabla" style={{ marginTop: "2em", marginBottom: "2em" }}>
       <h3>Disponibilidad</h3>
-      {/* Tabla para desktop */}
-      <table className="tabla-precios-reserva desktop-table">
+      <div style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
+        {/* Tabla para desktop */}
+        <table className="tabla-precios-reserva desktop-table" style={{ margin: '0 auto' }}>
         <thead>
           <tr>
             <th>Tipo de reserva</th>
@@ -39,6 +40,7 @@ function PreciosBalnearioTabla({ precios, esDuenio, abrirModalPrecio }) {
           ))}
         </tbody>
       </table>
+      </div>
       
       {/* Tarjetas para mobile */}
       <div className="tarjetas-precios-mobile">

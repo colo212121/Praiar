@@ -82,8 +82,12 @@ function ReservaManualModal({ mostrar, setMostrar, carpa, fechaInicio, fechaFin,
         .modal-content {
           background: #fff; border-radius: 12px; padding: 32px 24px 24px 24px;
           min-width: 320px; 
+          max-width: 600px;
+          width: 90%;
+          margin: 0 auto;
           box-shadow: 0 2px 16px rgba(0,0,0,0.18);
           position: relative;
+          box-sizing: border-box;
         }
         .cerrar-mapa-btn {
           position: absolute; right: 16px; top: 12px; font-size: 22px;
@@ -103,6 +107,14 @@ function ReservaManualModal({ mostrar, setMostrar, carpa, fechaInicio, fechaFin,
           border: 1px solid #c5c5c5;
           border-radius: 5px;
           font-size: 15px;
+          box-sizing: border-box;
+        }
+        
+        @media (max-width: 768px) {
+          .modal-content {
+            width: 95%;
+            padding: 24px 18px 18px 18px;
+          }
         }
         .form-group {
           display: flex;

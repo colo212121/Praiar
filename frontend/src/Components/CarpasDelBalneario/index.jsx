@@ -106,6 +106,7 @@ function CarpasDelBalneario(props) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [touchStart, setTouchStart] = useState(null);
   const [todosElementos] = useState([
     { nombre: "Pasillo", tipo: "pasillo" },
     { nombre: "Pileta", tipo: "pileta" },
@@ -707,9 +708,9 @@ function CarpasDelBalneario(props) {
   const handleZoomOut = () => { setZoom(prevZoom => Math.max(prevZoom / 1.2, 0.3)); };
   const handleResetZoom = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
   
-  // Handlers solo para dueños que quieran arrastrar el mapa
+  // Handlers para que TODOS puedan arrastrar el mapa para navegarlo
   const handleMouseDown = (e) => {
-    if (!esDuenio || e.button !== 0) return;
+    if (e.button !== 0) return;
     const target = e.target;
     if (target.closest && (target.closest('.carpa') || target.closest('.elemento'))) return;
     setIsDragging(true);
@@ -720,7 +721,7 @@ function CarpasDelBalneario(props) {
   };
   
   const handleMouseMove = (e) => {
-    if (isDragging && esDuenio) {
+    if (isDragging) {
       setPan({
         x: e.clientX - dragStart.x,
         y: e.clientY - dragStart.y
@@ -736,6 +737,34 @@ function CarpasDelBalneario(props) {
     if (dragging) {
       onMouseUp();
     }
+  };
+
+  // Touch handlers para móviles
+  const handleTouchStart = (e) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    setTouchStart({
+      x: touch.clientX - pan.x,
+      y: touch.clientY - pan.y
+    });
+    setDragStart({
+      x: touch.clientX - pan.x,
+      y: touch.clientY - pan.y
+    });
+  };
+
+  const handleTouchMove = (e) => {
+    if (e.touches.length !== 1 || !touchStart) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    setPan({
+      x: touch.clientX - dragStart.x,
+      y: touch.clientY - dragStart.y
+    });
+  };
+
+  const handleTouchEnd = () => {
+    setTouchStart(null);
   };
 
   useEffect(() => {
@@ -987,12 +1016,14 @@ function CarpasDelBalneario(props) {
             className="carpa-container"
             ref={containerRef}
             onWheel={handleWheel}
-            onMouseDown={esDuenio ? handleMouseDown : undefined}
-            onMouseMove={esDuenio ? handleMouseMove : undefined}
-            onMouseUp={esDuenio ? handleMouseUp : undefined}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
             style={{ 
-              cursor: esDuenio ? 'grab' : 'default',
-              touchAction: 'auto'
+              cursor: isDragging ? 'grabbing' : 'grab'
             }}
           >
             <div

@@ -6,6 +6,12 @@ import './AgenteComponent.css';
 
 export default function App() {
   const location = useLocation();
+  const session = getSesionContext();
+  const navigate = useNavigate();
+  
+  // Verificar si el usuario está registrado
+  const isLoggedIn = session?.isLoggedIn || false;
+
   const storageKey = (() => {
     try {
       const user = getSesionContext();
@@ -21,6 +27,13 @@ export default function App() {
         if (Array.isArray(arr) && arr.length) return arr;
       }
     } catch {}
+    // Mensaje inicial diferente según si está logueado o no
+    if (!isLoggedIn) {
+      return [{
+        rol: 'asistente',
+        texto: '¡Hola! Para usar este asistente necesitás estar registrado. Por favor, regístrate para poder utilizarlo.'
+      }];
+    }
     return [{
       rol: 'asistente',
       texto: '¡Hola! Decime la ciudad a la que querés ir y, si querés, las fechas. Después te muestro los balnearios y te paso el link listo.'
@@ -32,8 +45,6 @@ export default function App() {
   const [error, setError] = useState('');
   const inputRef = useRef(null);
   useEffect(() => { try { inputRef.current && inputRef.current.focus(); } catch {} }, []);
-  const session = getSesionContext();
-  const navigate = useNavigate();
 
   const rol = !session?.isLoggedIn ? 'invitado' : (session?.esPropietario ? 'dueno' : 'cliente');
 
@@ -41,6 +52,13 @@ export default function App() {
     e.preventDefault();
     if (loading) return;
     if (!input.trim()) return;
+    
+    // Verificar si el usuario está registrado antes de enviar mensaje
+    if (!isLoggedIn) {
+      setError('Debes registrarte para usar este asistente');
+      return;
+    }
+    
     const mensajeParaEnviar = input;
 
     const nextUser = [...mensajes, { rol: 'user', texto: mensajeParaEnviar }];
@@ -111,10 +129,11 @@ export default function App() {
             className="chat-input"
             value={input}
             onChange={e => setInput(e.target.value)}
-            placeholder="Contame qué necesitás (ej: 'quiero una carpa del 5 al 10 en Miramar')"
+            placeholder={isLoggedIn ? "Contame qué necesitás (ej: 'quiero una carpa del 5 al 10 en Miramar')" : "Debes registrarte para usar este asistente"}
             ref={inputRef}
+            disabled={!isLoggedIn}
           />
-          <button className="chat-send" disabled={loading}>
+          <button className="chat-send" disabled={loading || !isLoggedIn}>
             Enviar
           </button>
         </form>
