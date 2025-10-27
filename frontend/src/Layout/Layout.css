@@ -4,10 +4,15 @@
   flex-direction: column;
   font-family: 'El Messiri', sans-serif;
   background-color: var(--secondary2-200);
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 .main-content {
   flex: 1;
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
 }
 
 /* Botón flotante para abrir el chat */

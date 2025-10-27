@@ -5,7 +5,8 @@ function PreciosBalnearioTabla({ precios, esDuenio, abrirModalPrecio }) {
   return (
     <div className="precios-balneario-tabla" style={{ marginTop: "2em" }}>
       <h3>Disponibilidad</h3>
-      <table className="tabla-precios-reserva">
+      {/* Tabla para desktop */}
+      <table className="tabla-precios-reserva desktop-table">
         <thead>
           <tr>
             <th>Tipo de reserva</th>
@@ -38,6 +39,44 @@ function PreciosBalnearioTabla({ precios, esDuenio, abrirModalPrecio }) {
           ))}
         </tbody>
       </table>
+      
+      {/* Tarjetas para mobile */}
+      <div className="tarjetas-precios-mobile">
+        {precios.map((p) => (
+          <div key={p.id_tipo_ubicacion} className="tarjeta-precio">
+            <div className="tarjeta-precio-header">
+              <h4>{p.nombre}</h4>
+            </div>
+            <div className="tarjeta-precio-body-compacto">
+              <div className="precio-compacto-row">
+                <span className="precio-label">Día</span>
+                <span className="precio-valor">${p.dia}</span>
+              </div>
+              <div className="precio-compacto-row">
+                <span className="precio-label">Semana</span>
+                <span className="precio-valor">${p.semana}</span>
+              </div>
+              <div className="precio-compacto-row">
+                <span className="precio-label">Quincena</span>
+                <span className="precio-valor">${p.quincena}</span>
+              </div>
+              <div className="precio-compacto-row">
+                <span className="precio-label">Mes</span>
+                <span className="precio-valor">${p.mes}</span>
+              </div>
+              {esDuenio && (
+                <button
+                  className="boton-agregar-servicio"
+                  onClick={() => abrirModalPrecio(p)}
+                  style={{ marginTop: '0.5rem', width: '100%' }}
+                >
+                  Editar
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

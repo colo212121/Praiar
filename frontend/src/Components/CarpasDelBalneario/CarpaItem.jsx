@@ -33,6 +33,16 @@ function CarpaItem({
         // Guardar posición original y offset de clic para arrastre más natural
         setDragging({ tipo: "carpa", id: carpa.id_carpa, origX: carpa.x, origY: carpa.y, offsetX: clickOffsetX, offsetY: clickOffsetY });
       }}
+      onTouchStart={(e) => {
+        // Manejar eventos táctiles para mobile
+        if (!esDuenio) return;
+        e.stopPropagation();
+        const touch = e.touches[0];
+        const rect = e.currentTarget.getBoundingClientRect();
+        const clickOffsetX = touch.clientX - rect.left - rect.width / 2;
+        const clickOffsetY = touch.clientY - rect.top - rect.height / 2;
+        setDragging({ tipo: "carpa", id: carpa.id_carpa, origX: carpa.x, origY: carpa.y, offsetX: clickOffsetX, offsetY: clickOffsetY });
+      }}
       onClick={() => {
         // Dueño: el click en la carpa no reserva; usar el botón pequeño
         if (esDuenio) return;

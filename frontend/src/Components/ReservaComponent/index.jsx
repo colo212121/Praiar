@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import FasesReserva from '../FasesReserva/';
 import './ReservaComponent.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faArrowLeft } from '@fortawesome/free-solid-svg-icons';
 
 const CARD_WIDTH = 340;
 const RESEÑAS_POR_VISTA = 2;
@@ -390,9 +391,34 @@ function ReservaComponent() {
     );
   }
 
+  // Componente para botón de volver atrás en mobile
+  function BackButtonMobile() {
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    
+    useEffect(() => {
+      const handleResize = () => setIsMobile(window.innerWidth <= 768);
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }, []);
+    
+    if (!isMobile) return null;
+    
+    return (
+      <button 
+        className="back-button-mobile"
+        onClick={() => navigate(-1)}
+        aria-label="Volver atrás"
+      >
+        <FontAwesomeIcon icon={faArrowLeft} />
+        <span>Volver</span>
+      </button>
+    );
+  }
+
   return (
     <>
       <FasesReserva faseActual={2} />
+      <BackButtonMobile />
       <div className="formulario-reserva">
         <div className="informacion-reserva">
           {balnearioInfo && (
@@ -583,38 +609,20 @@ function ReservaComponent() {
       {/* MODAL MAPA: pantalla completa en desktop/mobile */}
       {mostrarMapa && (
         <div
-          style={{
-            position: "fixed",
-            left: 0,
-            top: 0,
-            zIndex: 1000,
-            width: "100vw",
-            height: "100vh",
-            background: "rgba(0,0,0,0.85)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center"
-          }}
+          className="modal-mapa-overlay-reserva"
+          onClick={() => setMostrarMapa(false)}
         >
           <div
-            style={{
-              background: "#fff",
-              borderRadius: "12px",
-              padding: "24px",
-              width: "96vw",
-              height: "93vh",
-              overflow: "auto",
-              position: "relative",
-              boxShadow: "0 8px 40px #0006"
-            }}
+            className="modal-mapa-content-reserva"
+            onClick={e => e.stopPropagation()}
           >
             {/* Botón para cerrar */}
             <button
-              className="cerrar-mapa-btn"
+              className="cerrar-mapa-btn-reserva"
               onClick={() => setMostrarMapa(false)}
               aria-label="Cerrar"
             >
-            ✕
+              ✕
             </button>
             <h3 style={{ textAlign: "center", fontWeight: 600, marginBottom: 25 }}>Selecciona una o más ubicaciones en el mapa</h3>
             {/* --- Mapa embebido aquí --- */}
@@ -668,21 +676,6 @@ function ReservaComponent() {
               ))}
             </div>
             <button
-              style={{
-                marginTop: 25,
-                fontWeight: 600,
-                fontSize: 18,
-                padding: "10px 24px",
-                borderRadius: 7,
-                background: "#2b87f5",
-                color: "#fff",
-                border: "none",
-                cursor: seleccionadasMapa.length === 0 ? "not-allowed" : "pointer",
-                opacity: seleccionadasMapa.length === 0 ? 0.6 : 1,
-                display: "block",
-                marginLeft: "auto",
-                marginRight: "auto"
-              }}
               className="btn-aplicar-seleccion"
               onClick={() => handleSeleccionarDesdeMapa(seleccionadasMapa)}
               disabled={seleccionadasMapa.length === 0}

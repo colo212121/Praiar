@@ -143,7 +143,9 @@ function CarpasDelBalneario(props) {
     if (!balnearioId) return;
     fetch(`http://localhost:3000/api/balneario/${balnearioId}/imagenes`)
       .then(res => res.json())
-      .then(data => setImagenesBalneario(data.imagenes || []));
+      .then(data => {
+        setImagenesBalneario(data.imagenes || []);
+      });
   }, [balnearioId]);
 
   // Modal galería: cerrar con ESC y manejar flechas
@@ -167,9 +169,24 @@ function CarpasDelBalneario(props) {
     }
   }, [showGaleria, showMapa, imagenesBalneario.length]);
 
+  // Manejar intercambio de imágenes
+  const handleIntercambiarImagen = (indexOriginal) => {
+    if (indexOriginal === 0) return; // Ya es la principal
+    
+    // Intercambiar las imágenes en el array
+    const nuevasImagenes = [...imagenesBalneario];
+    const temp = nuevasImagenes[0];
+    nuevasImagenes[0] = nuevasImagenes[indexOriginal];
+    nuevasImagenes[indexOriginal] = temp;
+    setImagenesBalneario(nuevasImagenes);
+  };
+  
   // Extraer imagen principal y secundarias (máximo 7)
   const imagenPrincipal = imagenesBalneario[0]?.url;
-  const imagenesSecundarias = imagenesBalneario.slice(1, 6).map(img => img.url); // 6 secundarias
+  const imagenesSecundarias = imagenesBalneario
+    .map((img, idx) => ({ url: img.url, idx }))
+    .filter((item) => item.idx !== 0)
+    .slice(0, 5);
   const imagenesExtra = imagenesBalneario.slice(7);
 
   function handleReservarManual(carpa) {
@@ -689,8 +706,10 @@ function CarpasDelBalneario(props) {
   const handleZoomIn = () => { setZoom(prevZoom => Math.min(prevZoom * 1.2, 3)); };
   const handleZoomOut = () => { setZoom(prevZoom => Math.max(prevZoom / 1.2, 0.3)); };
   const handleResetZoom = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
+  
+  // Handlers solo para dueños que quieran arrastrar el mapa
   const handleMouseDown = (e) => {
-    if (e.button !== 0) return;
+    if (!esDuenio || e.button !== 0) return;
     const target = e.target;
     if (target.closest && (target.closest('.carpa') || target.closest('.elemento'))) return;
     setIsDragging(true);
@@ -699,8 +718,9 @@ function CarpasDelBalneario(props) {
       y: e.clientY - pan.y
     });
   };
+  
   const handleMouseMove = (e) => {
-    if (isDragging) {
+    if (isDragging && esDuenio) {
       setPan({
         x: e.clientX - dragStart.x,
         y: e.clientY - dragStart.y
@@ -710,6 +730,7 @@ function CarpasDelBalneario(props) {
       onMouseMove(e);
     }
   };
+  
   const handleMouseUp = () => {
     setIsDragging(false);
     if (dragging) {
@@ -789,12 +810,25 @@ function CarpasDelBalneario(props) {
         <div className="balneario-imagenes-grid">
           <div className="principal-img-wrapper">
             {imagenPrincipal && (
-              <img src={imagenPrincipal} alt="Principal balneario" className="img-principal" />
+              <img 
+                src={imagenPrincipal} 
+                alt="Principal balneario" 
+                className="img-principal"
+                onClick={() => setShowGaleria(true)}
+                style={{ cursor: 'pointer' }}
+              />
             )}
           </div>
           <div className="secundarias-img-wrapper">
-            {imagenesSecundarias.map((url, idx) => (
-              <img key={idx} src={url} alt={`Foto ${idx + 2} balneario`} className="img-secundaria" />
+            {imagenesSecundarias.map((item, idx) => (
+              <img 
+                key={idx} 
+                src={item.url} 
+                alt={`Foto ${idx + 2} balneario`} 
+                className="img-secundaria"
+                onClick={() => handleIntercambiarImagen(item.idx)}
+                style={{ cursor: 'pointer' }}
+              />
             ))}
             {imagenesExtra.length > 0 && (
               <div className="img-mas-fotos" onClick={() => { setShowGaleria(true); setCarouselIndex(0); }}>
@@ -805,41 +839,18 @@ function CarpasDelBalneario(props) {
           </div>
         </div>
       </div>
-      {/* Modal galería tipo carrusel */}
+      {/* Modal galería - solo mostrar la imagen principal */}
       {showGaleria && (
         <div className="modal-galeria" onClick={() => setShowGaleria(false)}>
           <div className="modal-galeria-content" onClick={e => e.stopPropagation()}>
             <button className="close-galeria-btn" onClick={() => setShowGaleria(false)}>✕</button>
-            <div className="galeria-carrusel">
-              <button
-                className="carrusel-nav-btn"
-                disabled={carouselIndex === 0}
-                onClick={() => setCarouselIndex(idx => Math.max(idx - 1, 0))}
-              >
-                ‹
-              </button>
+            {imagenPrincipal && (
               <img
-                src={imagenesBalneario[carouselIndex]?.url}
-                alt={`Imagen ${carouselIndex + 1}`}
+                src={imagenPrincipal}
+                alt="Imagen del balneario"
                 className="img-galeria-carrusel"
               />
-              <button
-                className="carrusel-nav-btn"
-                disabled={carouselIndex === imagenesBalneario.length - 1}
-                onClick={() => setCarouselIndex(idx => Math.min(idx + 1, imagenesBalneario.length - 1))}
-              >
-                ›
-              </button>
-            </div>
-            <div className="carrusel-indicadores">
-              {imagenesBalneario.map((img, idx) => (
-                <span
-                  key={idx}
-                  className={`carrusel-dot${carouselIndex === idx ? ' active' : ''}`}
-                  onClick={() => setCarouselIndex(idx)}
-                />
-              ))}
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -975,11 +986,14 @@ function CarpasDelBalneario(props) {
           <div
             className="carpa-container"
             ref={containerRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
             onWheel={handleWheel}
-            style={{ cursor: (isDragging || dragging) ? 'grabbing' : 'grab' }}
+            onMouseDown={esDuenio ? handleMouseDown : undefined}
+            onMouseMove={esDuenio ? handleMouseMove : undefined}
+            onMouseUp={esDuenio ? handleMouseUp : undefined}
+            style={{ 
+              cursor: esDuenio ? 'grab' : 'default',
+              touchAction: 'auto'
+            }}
           >
             <div
               className="map-canvas"
@@ -996,7 +1010,7 @@ function CarpasDelBalneario(props) {
                 <div
                   key={carpa.id_carpa}
                   className="carpa-wrapper"
-                  style={{ position: "absolute", left, top, zIndex: 1 }}
+                  style={{ position: "absolute", left, top, zIndex: 1, pointerEvents: 'auto' }}
                 >
                   <CarpaItem
                     carpa={carpa}

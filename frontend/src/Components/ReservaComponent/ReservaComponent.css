@@ -543,6 +543,59 @@
   color: #002537;
 }
 
+/* Modal mapa para reserva */
+.modal-mapa-overlay-reserva {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.modal-mapa-content-reserva {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  width: 100%;
+  max-width: 1200px;
+  max-height: 93vh;
+  overflow: auto;
+  position: relative;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+}
+
+.cerrar-mapa-btn-reserva {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  font-size: 24px;
+  background: #005A84;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.cerrar-mapa-btn-reserva:hover {
+  background: #003F5E;
+  transform: scale(1.1);
+}
+
 /* Estilos adicionales para mejorar la apariencia */
 .reserva-form input[type="text"]:focus,
 .reserva-form input[type="email"]:focus,
@@ -556,6 +609,7 @@
     flex-direction: column;
     padding: 1rem;
     margin: 0.5rem auto;
+    gap: 1.5rem;
   }
   
   .reserva-form {
@@ -572,10 +626,172 @@
     max-width: none;
     margin-right: 0;
     margin-bottom: 1.2rem;
+    width: 100% !important;
   }
   
   .informacion-reserva {
     max-width: none;
     margin-bottom: 1.5rem;
+    width: 100%;
+  }
+  
+  .reserva-form input,
+  .reserva-form select {
+    width: 100% !important;
+    max-width: 100%;
+  }
+  
+  .telefono-wrapper {
+    width: 100% !important;
+  }
+  
+  .formulario-reserva label {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .formulario-reserva {
+    padding: 0.5rem;
+    gap: 1rem;
+  }
+  
+  .reserva-form {
+    padding: 20px 15px;
+  }
+  
+  .reserva-form h2 {
+    font-size: 1.5rem;
+  }
+  
+  .info-balneario h4,
+  .info-datos-reserva h4 {
+    font-size: 1.2rem;
+  }
+}
+
+/* Botón de volver atrás para mobile */
+.back-button-mobile {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 12px 20px;
+  margin: 1rem auto;
+  background: #005A84;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 90, 132, 0.2);
+  max-width: 1200px;
+}
+
+.back-button-mobile:hover {
+  background: #003F5E;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 90, 132, 0.3);
+}
+
+.back-button-mobile svg {
+  font-size: 1.2rem;
+}
+
+/* Ocultar el botón en desktop */
+@media (min-width: 769px) {
+  .back-button-mobile {
+    display: none;
+  }
+}
+
+/* En mobile, centrar el botón */
+@media (max-width: 768px) {
+  .back-button-mobile {
+    width: calc(100% - 2rem);
+    margin-left: 1rem;
+    margin-right: 1rem;
+  }
+  
+  .modal-mapa-overlay-reserva {
+    padding: 0.5rem;
+  }
+  
+  .modal-mapa-content-reserva {
+    padding: 1rem;
+    border-radius: 8px;
+  }
+  
+  .modal-mapa-content-reserva h3 {
+    font-size: 1.1rem !important;
+    margin-bottom: 15px !important;
+  }
+  
+  .cerrar-mapa-btn-reserva {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+    top: 8px;
+    right: 8px;
+  }
+  
+  .carpa-container {
+    min-height: 60vh !important;
+    min-width: 100% !important;
+    margin: 0 auto 15px auto !important;
+  }
+  
+  .carpa {
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  
+  .btn-aplicar-seleccion {
+    font-size: 16px !important;
+    padding: 12px 20px !important;
+  }
+}
+
+.btn-aplicar-seleccion {
+  margin-top: 25px;
+  font-weight: 600;
+  font-size: 18px;
+  padding: 10px 24px;
+  border-radius: 7px;
+  background: #2b87f5;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(43, 135, 245, 0.3);
+}
+
+.btn-aplicar-seleccion:hover:not(:disabled) {
+  background: #1e6fd8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(43, 135, 245, 0.4);
+}
+
+.btn-aplicar-seleccion:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background: #a0aec0;
+}
+
+.btn-aplicar-seleccion:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(43, 135, 245, 0.3);
+}
+
+@media (max-width: 768px) {
+  .btn-aplicar-seleccion {
+    font-size: 16px;
+    padding: 12px 20px;
+    width: 100%;
+    max-width: 300px;
   }
 }
